@@ -1,0 +1,574 @@
+---
+title: "Case Study2 - Final"
+author: "Kenneth Richardson"
+date: "April 18, 2019"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, echo=FALSE}
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(data.table)
+library(rockchalk)
+library(corrplot)
+library(caTools)
+library(caret)
+library(plotROC)
+library(writexl)
+library(e1071)
+library(FNN)
+library(BBmisc)
+library(AUC)
+library(broom)
+library(ROCR)
+```
+
+
+
+```{r read data}
+CaseStudy2.data <- read.csv("~/SMU/DDS/Case Study 2/CaseStudy2-data.csv")
+```
+
+
+## Grouping more than one Job Role vs. Attrition (Sales Rep, Sales Exec, Other) 
+
+```{r GrpJobrolesvsAttr, echo=TRUE}
+# Shortening the Job Role level Names
+levels(CaseStudy2.data$JobRole)[levels(CaseStudy2.data$JobRole)=="Sales Executive"] <- "Sales Exec."
+levels(CaseStudy2.data$JobRole)[levels(CaseStudy2.data$JobRole)=="Manufacturing Director"] <- "Mfg Dir."
+levels(CaseStudy2.data$JobRole)[levels(CaseStudy2.data$JobRole)=="Research Scientist"] <- "Res Scientist"
+levels(CaseStudy2.data$JobRole)[levels(CaseStudy2.data$JobRole)=="Laboratory Technician"] <- "Lab Tech."
+levels(CaseStudy2.data$JobRole)[levels(CaseStudy2.data$JobRole)=="Healthcare Representative"] <- "Health Rep."
+levels(CaseStudy2.data$JobRole)[levels(CaseStudy2.data$JobRole)=="Sales Representative"] <- "Sales Rep"
+levels(CaseStudy2.data$JobRole)[levels(CaseStudy2.data$JobRole)=="Manager"] <- "Mgr"
+levels(CaseStudy2.data$JobRole)[levels(CaseStudy2.data$JobRole)=="Research Director"] <- "Res Dir."
+levels(CaseStudy2.data$JobRole)[levels(CaseStudy2.data$JobRole)=="Human Resources"] <- "HR"
+# Confirm New Job Role Title were assigned
+levels(CaseStudy2.data$JobRole)
+
+#Grouping below job roles and renaming group level to "other" and assigning a new variable "JobRole2"
+CaseStudy2.data$JobRole2 <- combineLevels(CaseStudy2.data$JobRole,levs = c("Mfg Dir.", "Health Rep.", "Mgr", "Res Dir.","HR","Lab Tech.","Res Scientist"),newLabel = c("Other") )
+# to verify if new group level "Other" was assigned
+levels(CaseStudy2.data$JobRole2)
+# to verify if new group levels was assigned (checking the structure tof the data frame)
+str(CaseStudy2.data)
+
+
+# step 1) summarizing and transforming Data
+Case_data_Job <- CaseStudy2.data %>% 
+  group_by(JobRole2,Attrition) %>% 
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+# step 2) Scale creation
+scale_breaks <- c(0, 0.25, 0.5, 0.75, 1)
+# step 3) Plotting Data %
+ggplot(Case_data_Job, aes(x = factor(JobRole2), y = perc, fill = factor(Attrition))) +
+  geom_bar(stat="identity", width = 0.7) +
+  scale_y_continuous(breaks = scale_breaks, labels = scales::percent(scale_breaks)) +
+  labs(x = "JobRole", y = NULL, fill = "Attrition") +
+  theme_minimal(base_size = 14)
+
+
+
+```
+
+
+## Monthly Income Versus Age 
+```{r IncomevsAge, echo=TRUE}
+##MonthlyIncome vs. Age Bar Chart
+# Income appears to increase with age and less Attrition
+ggplot(CaseStudy2.data, aes(MonthlyIncome, Age, color = Attrition)) + 
+  geom_jitter() +
+  ggtitle("MonthlyIncome vs. Age ") +
+  theme_light()
+```
+
+
+## Grouped Ages Versus Attrition 
+```{r GrpAgesvsAttr, echo=TRUE}
+#Grouped Ages vs Attrition Bar Chart
+# Creating Age Groups to plot
+CaseStudy2.data$Age_grp <- CaseStudy2.data$Age
+CaseStudy2.data$Age_grp <- ifelse((CaseStudy2.data$Age>=18 & CaseStudy2.data$Age<=25) , '18-25',CaseStudy2.data$Age_grp)
+CaseStudy2.data$Age_grp <- ifelse((CaseStudy2.data$Age>=26 & CaseStudy2.data$Age<=35) , '26-35',CaseStudy2.data$Age_grp)
+CaseStudy2.data$Age_grp <- ifelse((CaseStudy2.data$Age>35) , 'Over 35',CaseStudy2.data$Age_grp)
+CaseStudy2.data$Age_grp <-as.factor(CaseStudy2.data$Age_grp)
+# Creating summary/ counts in Age Groups
+summary(CaseStudy2.data$Age_grp)
+
+#Now Setting up to plot
+# step 1) summarizing and transforming Data
+Age_grp_data <- CaseStudy2.data %>% 
+  group_by(Age_grp,Attrition) %>% 
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+# step 2) Scale creation
+scale_breaks <- c(0, 0.25, 0.5, 0.75, 1)
+# step 3) Plotting Data %
+ggplot(Age_grp_data, aes(x = factor(Age_grp), y = perc, fill = factor(Attrition))) +
+  geom_bar(stat="identity", width = 0.7) +
+  scale_y_continuous(breaks = scale_breaks, labels = scales::percent(scale_breaks)) +
+  labs(x = "Age Groups", y = NULL, fill = "Attrition") +
+  theme_minimal(base_size = 14)
+```
+
+
+## Grouped Years at the Company 
+```{r GrpYearsvsAttr, echo=TRUE}
+##Grouped Years at Company vs Attrition Bar Chart
+
+# Creating YearsAtCompany Groups to plot
+CaseStudy2.data$YACgrp <- CaseStudy2.data$YearsAtCompany
+CaseStudy2.data$YACgrp <- ifelse((CaseStudy2.data$YearsAtCompany<=5) , '5 or less',CaseStudy2.data$YACgrp)
+CaseStudy2.data$YACgrp <- ifelse((CaseStudy2.data$YearsAtCompany>=5 & CaseStudy2.data$YearsAtCompany<=10) , '5-10',CaseStudy2.data$YACgrp)
+CaseStudy2.data$YACgrp <- ifelse((CaseStudy2.data$YearsAtCompany>=11 & CaseStudy2.data$YearsAtCompany<=20) , '11-20',CaseStudy2.data$YACgrp)
+CaseStudy2.data$YACgrp <- ifelse((CaseStudy2.data$YearsAtCompany>20) , '20 & Over',CaseStudy2.data$YACgrp)
+CaseStudy2.data$YACgrp <-as.factor(CaseStudy2.data$YACgrp)
+# Creating summary/ counts in Age Groups
+summary(CaseStudy2.data$YACgrp)
+
+#Now Setting up to plot
+# step 1) summarizing and transforming Data
+YAC_grp_data <- CaseStudy2.data %>% 
+  group_by(YACgrp,Attrition) %>% 
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+# step 2) Scale creation
+scale_breaks <- c(0, 0.25, 0.5, 0.75, 1)
+# step 3) Plotting Data % and ordering by levels
+ggplot(YAC_grp_data, aes(x = factor(YACgrp, levels = c('5 or less','5-10','11-20','20 & Over')), y = perc, fill = factor(Attrition))) +
+  geom_bar(stat="identity", width = 0.7) +
+  scale_y_continuous(breaks = scale_breaks, labels = scales::percent(scale_breaks)) +
+  labs(x = "Years At Company", y = NULL, fill = "Attrition") +
+  theme_minimal(base_size = 14)
+```
+
+
+
+## Grouped by Education 
+
+```{r EduvsAttr, echo=TRUE}
+##EducationField vs Attrition Bar Chart
+# step 1) summarizing and transforming Data
+Case_data_Educ <- CaseStudy2.data %>% 
+  group_by(EducationField,Attrition) %>% 
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+# step 2) Scale creation
+scale_breaks <- c(0, 0.25, 0.5, 0.75, 1)
+# step 3) Plotting Data %
+ggplot(Case_data_Educ, aes(x = factor(EducationField), y = perc, fill = factor(Attrition))) +
+  geom_bar(stat="identity", width = 0.7) +
+  scale_y_continuous(breaks = scale_breaks, labels = scales::percent(scale_breaks)) +
+  labs(x = "EducationField", y = NULL, fill = "Attrition") +
+  theme_minimal(base_size = 14)
+```
+
+
+
+
+
+## Grouped by Marital Status 
+
+```{r MstatusvsAttr, echo=TRUE}
+##MaritalStatus vs Attrition Bar Chart
+
+Case_data_Marital_Stat <- CaseStudy2.data %>% 
+  group_by(MaritalStatus,Attrition) %>% 
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+# step 2) Scale creation
+scale_breaks <- c(0, 0.25, 0.5, 0.75, 1)
+# step 3) Plotting Data %
+ggplot(Case_data_Marital_Stat, aes(x = factor(MaritalStatus), y = perc, fill = factor(Attrition))) +
+  geom_bar(stat="identity", width = 0.7) +
+  scale_y_continuous(breaks = scale_breaks, labels = scales::percent(scale_breaks)) +
+  labs(x = "Marital Status", y = NULL, fill = "Attrition") +
+  theme_minimal(base_size = 14)
+
+```
+
+
+
+```{r readdata2}
+casedata <- read.csv("~/SMU/DDS/Case Study 2/CaseStudy2-data.csv",na.strings = "NULL")
+casedata2 <- read.csv("~/SMU/DDS/Case Study 2/CaseStudy2Validation No Attrition.csv",na.strings = "NULL")
+```
+
+
+```{r Sens and Spec}
+# Changing categorical variables to factors 
+casedata$Attrition <- as.factor(casedata$Attrition)
+casedata$BusinessTravel <- as.factor(casedata$BusinessTravel)
+casedata$Department <- as.factor(casedata$Department)
+casedata$Gender <- as.factor(casedata$Gender)
+casedata$JobRole <- as.factor(casedata$JobRole)
+casedata$MaritalStatus <- as.factor(casedata$MaritalStatus)
+casedata$MaritalStatus <- as.factor(casedata$MaritalStatus)
+str(casedata)
+
+#dropping ID, RandOver18
+New_set =subset(casedata, select=-c(ID,Rand,Over18))
+str(New_set)
+
+#create train and test data set
+set.seed(88)
+split <- sample.split(New_set$Attrition, SplitRatio = 0.75) 
+
+casetrain <- subset(New_set, split ==TRUE)
+casetest  <- subset(New_set, split ==FALSE)
+
+###logistic Model 1 Training
+model <- glm(Attrition ~ ., data=casetrain, family= binomial) 
+summary(model)
+
+# visual data fram of the model
+tm = tidy(model)
+tm
+
+# get variables with p value < .05
+tm$term[tm$p.value <.05]
+
+
+
+### With Conf matrix to calculate Specificity and Sensitivity
+threshold=0.08  
+predicted_values<- ifelse(predict(model,type="response")>threshold,1,0)
+actual_values<- model$y
+conf_matrix <- table(predicted_values,actual_values )
+conf_matrix
+# Calculate sensitivity training
+#sensitivity(conf_matrix)
+Sens <- conf_matrix[1,1]/(conf_matrix[1,1] + conf_matrix[2,1])
+Sens
+
+# Calculate Specificity training
+# specificity(conf_matrix)
+Spec  <- conf_matrix[2,2]/(conf_matrix[2,2] + conf_matrix[1,2])
+Spec
+
+#RocR Curve 1 Training
+predict <- predict(model, type='response')
+
+# plot Roc Curve Training
+RocRpred <- prediction(predict,casetrain$Attrition)
+RocRperf <- performance(RocRpred, 'tpr', 'fpr')
+plot(RocRperf, colorize = TRUE, text.adj = c(-0.2, 1.7)) 
+plot(main = "Roc Curve (Training)",xlab ="1-Specifity", ylab ="Sensitivity",RocRperf, colorize = TRUE, text.adj = c(-0.2, 1.7)) 
+abline(0, 1, lty = 2)
+
+
+###logistic Model 2 Test
+
+#need to change categorical variables to factors 
+casetest$Attrition <- as.factor(casetest$Attrition)
+casetest$BusinessTravel <- as.factor(casetest$BusinessTravel)
+casetest$Department <- as.factor(casetest$Department)
+casetest$Gender <- as.factor(casetest$Gender)
+casetest$JobRole <- as.factor(casetest$JobRole)
+casetest$MaritalStatus <- as.factor(casetest$MaritalStatus)
+casetest$MaritalStatus <- as.factor(casetest$MaritalStatus)
+str(casetest)
+
+model2 <- glm(Attrition ~ ., data=casetest, family= binomial) 
+
+summary(model2)
+
+
+### With Conf matrix to calculate Specificity and Sensitivity
+threshold2=0.08  
+predicted_values2<- ifelse(predict(model2,type="response")>threshold2,1,0)
+actual_values2<- model2$y
+conf_matrix2 <- table(predicted_values2,actual_values2)
+conf_matrix2
+# Calculate Specificity Test
+Sens2 <- conf_matrix2[1,1]/(conf_matrix2[1,1] + conf_matrix2[2,1])
+Sens2
+
+# Calculate Sensitivity TEst
+Spec2  <- conf_matrix2[2,2]/(conf_matrix2[2,2] + conf_matrix2[1,2])
+Spec2
+
+
+#RocR Curve 1 Test 
+predict2 <- predict(model2, type='response')
+
+# plot Roc Curve Test
+RocRpred2 <- prediction(predict2,casetest$Attrition)
+RocRperf2 <- performance(RocRpred2, 'tpr', 'fpr')
+plot(RocRperf2, colorize = TRUE, text.adj = c(-0.2, 1.7)) 
+plot(main = "Roc Curve (Test)",xlab ="1-Specifity", ylab ="Sensitivity",RocRperf2, colorize = TRUE, text.adj = c(-0.2, 1.7)) 
+abline(0, 1, lty = 2)
+
+
+```
+
+
+
+## Logistic Model - Predicting Attrition
+```{r Logistc pred_Attrition}
+#Changing categorical variables to factors for Training, Test/ Validation set No Attrition, an draining, Test/ Validation set No Salary
+Training_case <- read.csv("~/SMU/DDS/Case Study 2/CaseStudy2-data.csv",na.strings = "NULL")
+Test_Case  <- read.csv("~/SMU/DDS/Case Study 2/CaseStudy2Validation No Attrition.csv",na.strings = "NULL")
+Test_Case2 <- read.csv("~/SMU/DDS/Case Study 2/CaseStudy2Validation No Salary.csv",na.strings = "NULL")
+  
+#need to change categorical variables to factors for Training Case Set
+Training_case$Attrition <- as.factor(Training_case$Attrition)
+Training_case$BusinessTravel <- as.factor(Training_case$BusinessTravel)
+Training_case$Department <- as.factor(Training_case$Department)
+Training_case$Gender <- as.factor(Training_case$Gender)
+Training_case$JobRole <- as.factor(Training_case$JobRole)
+Training_case$MaritalStatus <- as.factor(Training_case$MaritalStatus)
+Training_case$Over18 <- as.integer(Training_case$Over18)
+str(Training_case)
+
+#need to change categorical variables to factors for Test Case set
+Test_Case$Attrition <- as.factor(Test_Case$Attrition)
+Test_Case$BusinessTravel <- as.factor(Test_Case$BusinessTravel)
+Test_Case$Department <- as.factor(Test_Case$Department)
+Test_Case$Gender <- as.factor(Test_Case$Gender)
+Test_Case$JobRole <- as.factor(Test_Case$JobRole)
+Test_Case$MaritalStatus <- as.factor(Test_Case$MaritalStatus)
+Test_Case$Over18 <- as.integer(Test_Case$Over18)
+str(Test_Case)
+
+#need to change categorical variables to factors for Test Case2 set
+Test_Case2$Attrition <- as.factor(Test_Case2$Attrition)
+Test_Case2$BusinessTravel <- as.factor(Test_Case2$BusinessTravel)
+Test_Case2$Department <- as.factor(Test_Case2$Department)
+Test_Case2$Gender <- as.factor(Test_Case2$Gender)
+Test_Case2$JobRole <- as.factor(Test_Case2$JobRole)
+Test_Case2$MaritalStatus <- as.factor(Test_Case2$MaritalStatus)
+Test_Case2$Over18 <- as.integer(Test_Case2$Over18)
+str(Test_Case2)
+
+#Logistic Model 
+model_train <- glm(Attrition ~ .-ID -Rand , data=Training_case, family= binomial) 
+summary(model_train)
+# Predicting probabilities on test set
+model_prob <- predict.glm(model_train,Test_Case[,-3], type="response")
+# creating vector to hold predictions
+train.df <- rep("No",nrow(Test_Case))
+train.df[model_prob >.5] <- "Yes"
+
+# Final predictions
+Pred.df = data.frame(Test_Case$ID,train.df)
+colnames(Pred.df) = c("ID","Predictions")
+Pred.df
+#write_xlsx(x = Pred.df, path = "~/SMU/DDS/Case Study 2/Case2PredictionsRichardsonAttrition.xlsx", col_names = TRUE)
+
+
+```
+
+
+## Logistic Regression - Predicting Salary
+```{r Logistic pred_Salary}
+# dataset into Training and test
+set.seed(88)
+split2 <- sample.split(Training_case$MonthlyIncome, SplitRatio = 0.75) 
+
+Train.case <- subset(Training_case, split ==TRUE)
+Test.case  <- subset(Training_case, split ==FALSE)
+
+# 1 Fitting model to remove any insignificant predictors (Training)
+fit <- lm(MonthlyIncome ~ .-ID -Rand , data=Train.case)
+summary(fit)
+# 2 Refit model to with insignificant predictors removed
+refit <- lm(MonthlyIncome ~ BusinessTravel+JobLevel+MonthlyRate+PerformanceRating+TotalWorkingYears+YearsSinceLastPromotion , data=Train.case)
+summary(refit)
+# 3 Diagnostic plot of refit note: All four plots indicate the model follows assumption.  
+plot(refit)
+
+#pairs
+pairs(~MonthlyIncome+BusinessTravel+JobLevel+MonthlyRate+PerformanceRating+TotalWorkingYears+YearsSinceLastPromotion, data=Train.case)
+# plot with Monthly Income and Joblevel
+plot(MonthlyIncome~JobLevel,data=Train.case)
+
+# Calculating RMSE on Training Set
+#step 1 residuals sum of squares
+RSS <-c(crossprod(refit$residuals))
+#step 2 Mean squared error
+MSE <- RSS/length(refit$residuals)
+# Step 3 Root MSE
+RMSE <- sqrt(MSE)
+#ouput
+RMSE
+
+# 1 Fitting model to remove any insignificant predictors (Test)
+fit2 <- lm(MonthlyIncome ~ .-ID -Rand , data=Train.case)
+summary(fit2)
+# 2 Refit model to with insignificant predictors removed
+refit2 <- lm(MonthlyIncome ~ BusinessTravel+JobLevel+MonthlyRate+PerformanceRating+TotalWorkingYears+YearsSinceLastPromotion , data=Train.case)
+summary(refit2)
+# 3 Diagnostic plot of refit note: All four plots indicate the model follows assumption.  
+plot(refit2)
+
+#pairs
+pairs(~MonthlyIncome+BusinessTravel+JobLevel+MonthlyRate+PerformanceRating+TotalWorkingYears+YearsSinceLastPromotion, data=Test.case)
+# plot with Monthly Income and Joblevel
+plot(MonthlyIncome~JobLevel,data=Test.case)
+
+# Calculating RMSE on Training Set
+#step 1 residuals sum of squares
+RSS_2 <-c(crossprod(refit2$residuals))
+#step 2 Mean squared error
+MSE_2 <- RSS/length(refit2$residuals)
+# Step 3 Root MSE
+RMSE_2 <- sqrt(MSE)
+#ouput
+RMSE_2
+
+
+# Predicting Monthly Income
+model_prob_2 <- predict(refit,Test_Case2[,-20], type="response")
+# Creating data frame
+finalpred = data.frame(Test_Case2$ID,model_prob_2)
+# final prediction
+colnames(finalpred) = c("ID","MonthlyIncomePredictions")
+finalpred
+
+#write_xlsx(x = finalpred, path = "~/SMU/DDS/Case Study 2/Case2PredictionsRichardsonSalary", col_names = TRUE)
+
+```
+
+
+## KNN Model - Predicting Attrition
+```{r KNN Model }
+Training_casedata <- read.csv("~/SMU/DDS/Case Study 2/CaseStudy2-data.csv",na.strings = "NULL")
+Test_casedata <- read.csv("~/SMU/DDS/Case Study 2/CaseStudy2Validation No Attrition.csv",na.strings = "NULL")
+
+Combine_data <- rbind(Training_casedata, Test_casedata) # combine train and test data sets
+
+# dropping 1 level categorical variables
+new_data <- select(Combine_data,-EmployeeCount, -StandardHours, -Over18)
+
+str(new_data)
+
+# coninuous variables
+Num <- sapply(new_data, is.numeric)
+Numeric <- new_data[,Num]
+
+# categorical variables
+categoric <- sapply(new_data, is.factor)
+categorical <- new_data[,categoric]
+
+
+# Creating dummy variable
+K <- select(categorical, -Attrition)
+dummycr <- dummyVars("~.", data = K)
+df2 <- data.frame(predict(dummycr, newdata = K))
+str(df2)
+
+# Combining Categorical and Numeric
+df3 <- cbind.data.frame(Numeric,df2)
+dim(df3)
+
+# Scalling 
+scale_data <- normalize(df3, method = "standardize", range = c(0,1))
+
+df4 <- cbind.data.frame(scale_data,new_data$Attrition)
+colnames(df4)[55] <- "Attrition"
+
+
+# split into traing and test
+
+train_data = df4[1:870,]
+test_data = df4[871:1170,]
+
+
+#Knn 
+Control <-trainControl(method="repeatedcv",repeats = 5)
+knnfit <- train(Attrition ~., data=train_data, method ="knn", trControl = Control, tuneLength=10)
+knnfit
+plot(knnfit)
+
+knnpred <- predict(knnfit, newdata=test_data)
+
+# Creating data frame
+final_knnpred = data.frame(test_data$ID,knnpred)
+# final prediction
+colnames(final_knnpred) = c("ID","KNNPredictions")
+final_knnpred
+
+
+#write_xlsx(x = final_knnpred, path = "~/SMU/DDS/Case Study 2/Case2PredictionsRichardsonAttritionKNN", col_names = TRUE)
+
+
+```
+
+
+## KNN Model Validation
+```{r KNN Model Accuracy}
+Training.casedata <- read.csv("~/SMU/DDS/Case Study 2/CaseStudy2-data.csv",na.strings = "NULL")
+
+
+# dropping 1 level categorical variables
+New_data2 <- select(Training.casedata,-EmployeeCount, -StandardHours, -Over18)
+
+str(New_data2)
+
+# coninuous variables
+Num2 <- sapply(New_data2, is.numeric)
+Numeric2 <- New_data2[,Num]
+
+# categorical variables
+categoric2 <- sapply(New_data2, is.factor)
+categorical2 <- New_data2[,categoric2]
+
+
+# Creating dummy variable
+K2 <- select(categorical2, -Attrition)
+dummycr2 <- dummyVars("~.", data = K2)
+df2.1 <- data.frame(predict(dummycr2, newdata = K2))
+str(df2.1)
+
+# Combining Categorical and Numeric
+df3.1 <- cbind.data.frame(Numeric2,df2.1)
+dim(df3.1)
+
+# Scalling 
+scale_data2 <- normalize(df3.1, method = "standardize", range = c(0,1))
+
+df4.1 <- cbind.data.frame(scale_data2,New_data2$Attrition)
+colnames(df4.1)[55] <- "Attrition"
+
+
+# split into traing and test
+
+train_data2 = df4.1[1:600,]
+test_data2 = df4.1[671:870,]
+
+
+#Knn 
+Control <-trainControl(method="repeatedcv",repeats = 5)
+knnfit2 <- train(Attrition ~., data=train_data2, method ="knn", trControl = Control, tuneLength=10)
+knnfit2
+plot(knnfit2)
+
+knnpred2 <- predict(knnfit2, newdata=test_data2)
+
+# Creating data frame
+final_knnpred2 = data.frame(test_data2$ID,knnpred2)
+# final prediction
+colnames(final_knnpred2) = c("ID","KNNPredictions")
+final_knnpred
+
+# Confusion matrix to see accuracy
+confusionMatrix(knnpred2,test_data2$Attrition)
+# Plotting Sensitivity and Specificity
+plot(roc(knnpred2,test_data2$Attrition))
+# obtaining the AUC
+auc(roc(knnpred2,test_data2$Attrition))
+
+
+#write_xlsx(x = df4.1, path = "~/SMU/DDS/Case Study 2/df4.1", col_names = TRUE)
+
+
+```
+
+
+
